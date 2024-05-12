@@ -1,0 +1,42 @@
+hr{
+  border: 0;
+  clear:both;
+  display:block;
+  width: 90%;               
+  background-color: #45aeff;
+  height: 1px;
+}
+
+#navbar-component{
+  background-color: #45aeff;
+  height: 70px;
+
+}
+#navbar-component .link:hover{
+  color: white;
+}
+#navbar-component .logo{
+  font-family: Apple Chancery, cursive;
+}
+
+
+/* Sidebar Component */
+
+#sidebar-component{
+  margin-top: 5%;
+  margin-left: 10%;
+}
+
+#sidebar-component.sticky{
+  position:fixed;
+  margin-top: 0rem;
+  margin-left: 0.5rem;
+}
+
+#sidebar-component .sidebar-input{
+  width: 80%;
+}
+#sidebar-component .sidebar-input-date{
+  width: 87%;
+  padding: 10px 20px;
+}

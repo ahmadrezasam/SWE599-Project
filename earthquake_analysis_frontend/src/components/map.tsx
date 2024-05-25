@@ -15,13 +15,27 @@ import {
   useMarkerRef,
 } from "@vis.gl/react-google-maps";
 
-import { Circle } from "./circle";
+import { Circle } from "./maps/circle";
+import { Rectangle } from "./maps/rectangle";
 
 const GoogleMapComponent: React.FC<{
   filterParams: FilterParams;
   setEarthquakeObjects: React.Dispatch<React.SetStateAction<Earthquake[]>>;
 }> = ({ filterParams, setEarthquakeObjects }) => {
   const position = { lat: 39.0, lng: 35.2667 };
+  var bound = {
+    north: position.lat + 0.5,
+    south: position.lat - 0.5,
+    east: position.lng + 1.0,
+    west: position.lng - 1.0,
+  };
+  const [bounds, setBounds] = React.useState(bound);
+
+  const handleRectangleBoundsChange = (
+    newBounds: google.maps.LatLngBoundsLiteral
+  ) => {
+    setBounds(newBounds);
+  };
 
   const [apiKey, setApiKey] = useState("");
   const [earthquakes, setEarthquakes] = useState<Earthquake[]>([]);
@@ -39,7 +53,9 @@ const GoogleMapComponent: React.FC<{
   const [infoWindowOpen, setInfoWindowOpen] = useState(true);
   const [dataCount, setDataCount] = useState<number>(0);
 
-  // Handle close button click
+  const [isCircleDragging, setIsCircleDragging] = useState(false);
+  const [isRectangleDragging, setIsRectangleDragging] = useState(false);
+
   const handleInfoWindowClose = () => {
     setInfoWindowOpen(false);
   };
@@ -59,43 +75,48 @@ const GoogleMapComponent: React.FC<{
 
   const EARTHQUAKE_API_URL = BACKEND_API_URL + "earthquakes/";
   const RECENT_EARTHQUAKE_API_URL = BACKEND_API_URL + "earthquakes/recent/";
-  const EARTHQUAKE_AREA_LIST_API_URL = BACKEND_API_URL + "earthquakes/list/";
+  const EARTHQUAKE_AREA_LIST_API_URL =
+    BACKEND_API_URL + "earthquakes/list/within_area/";
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        let earthquakeObjects;
-
-        const queryParams = new URLSearchParams(
-          filterParams as unknown as Record<string, string>
-        ).toString();
-
-        if (shape === "circle" && searchButton) {
-          const apiUrl = `${EARTHQUAKE_AREA_LIST_API_URL}?circle_center_lat=${center.lat}&circle_center_lng=${center.lng}&circle_radius=${radius}&${queryParams}`;
-          earthquakeObjects = await Earthquake.fetchEarthquakeData(apiUrl);
-          console.log("Fetched earthquake data:", earthquakeObjects);
-        } else {
-          const apiUrl = Object.values(filterParams).every(
-            (value) => value === ""
-          )
-            ? RECENT_EARTHQUAKE_API_URL
-            : `${EARTHQUAKE_API_URL}?${queryParams}`;
-
-          earthquakeObjects = await Earthquake.fetchEarthquakeData(apiUrl);
+    useEffect(() => {
+      const fetchData = async () => {
+        try {
+          let earthquakeObjects;
+  
+          const queryParams = new URLSearchParams(
+            filterParams as unknown as Record<string, string>
+          ).toString();
+  
+          if ((shape === "circle" && searchButton) || isCircleDragging) {
+            const apiUrl = `${EARTHQUAKE_AREA_LIST_API_URL}?shape=circle&circle_center_lat=${center.lat}&circle_center_lng=${center.lng}&circle_radius=${radius}&${queryParams}`;
+            earthquakeObjects = await Earthquake.fetchEarthquakeData(apiUrl);
+          } else if ((shape === "rectangle" && searchButton) || isRectangleDragging) {
+            const apiUrl = `${EARTHQUAKE_AREA_LIST_API_URL}?shape=rectangle&north=${bounds.north}&south=${bounds.south}&east=${bounds.east}&west=${bounds.west}&${queryParams}`;
+            earthquakeObjects = await Earthquake.fetchEarthquakeData(apiUrl);
+          } else {
+            const apiUrl = Object.values(filterParams).every(
+              (value) => value === ""
+            )
+              ? RECENT_EARTHQUAKE_API_URL
+              : `${EARTHQUAKE_API_URL}?${queryParams}`;
+  
+            earthquakeObjects = await Earthquake.fetchEarthquakeData(apiUrl);
+          }
+  
+          setEarthquakes(earthquakeObjects);
+          setEarthquakeObjects(earthquakeObjects);
+          setDataCount(earthquakeObjects.length);
+        } catch (error) {
+          console.error("Error fetching earthquake data:", error);
         }
-
-        setEarthquakes(earthquakeObjects);
-        setEarthquakeObjects(earthquakeObjects);
-        setDataCount(earthquakeObjects.length);
-      } catch (error) {
-        console.error("Error fetching earthquake data:", error);
+      };
+  
+      if (searchButton || isCircleDragging || isRectangleDragging) {
+        fetchData();
+        setSearchButton(false);
       }
-    };
-
-    fetchData();
-    setSearchButton(false);
-  }, [filterParams, shape, center, radius, searchButton]);
-
+    }, [filterParams, shape, center, radius, bounds, searchButton, isCircleDragging, isRectangleDragging, setEarthquakeObjects]);
+  
   const markers = earthquakes.map((earthquake) => ({
     lat: earthquake.latitude,
     lng: earthquake.longitude,
@@ -151,19 +172,21 @@ const GoogleMapComponent: React.FC<{
       </div>
 
       <div>
-          <h5>Map Area Shape</h5>
-          <div className="d-flex">
-            <select
-              className="form-control w-auto me-2"
-              value={shape}
-              onChange={handleShapeChange}
-            >
-              <option value="none">None</option>
-              <option value="circle">Circle</option>
-              <option value="rectangular">Rectangular</option>
-            </select>
-            <button className="btn btn-info" onClick={handleSearch}>Search</button>
-          </div>
+        <h5>Map Area Shape</h5>
+        <div className="d-flex">
+          <select
+            className="form-control w-auto me-2"
+            value={shape}
+            onChange={handleShapeChange}
+          >
+            <option value="none">None</option>
+            <option value="circle">Circle</option>
+            <option value="rectangle">Rectangular</option>
+          </select>
+          <button className="btn btn-info" onClick={handleSearch}>
+            Search
+          </button>
+        </div>
       </div>
 
       <div>
@@ -211,7 +234,19 @@ const GoogleMapComponent: React.FC<{
                   draggable
                 />
               )}
-
+              {shape === "rectangle" && (
+                <Rectangle
+                  bounds={bounds}
+                  onBoundsChanged={handleRectangleBoundsChange}
+                  strokeColor={"#0c4cb3"}
+                  strokeOpacity={1}
+                  strokeWeight={3}
+                  fillColor={"#3b82f6"}
+                  fillOpacity={0.3}
+                  editable
+                  draggable
+                />
+              )}
               {activeMarker !== null && infoWindowOpen && (
                 <InfoWindow
                   position={{

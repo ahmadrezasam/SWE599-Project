@@ -45,7 +45,7 @@ class EarthquakesFilterListView(APIView):
         
         queryset = Earthquake.objects.all()
         filter_set = EarthquakeFilter(filtered_query_params, queryset=queryset)
-        filtered_queryset = filter_set.qs[:200]
+        filtered_queryset = filter_set.qs[:500]
         serializer = EarthquakesSerializer(filtered_queryset, many=True)
         return Response(serializer.data)
     
@@ -68,7 +68,7 @@ class EarthquakesYearListView(APIView):
         serializer = EarthquakesSerializer(earthquakes, many=True)
         return Response(serializer.data)
 
-def check(marker, circle, radius):  
+def check_inside_circle(marker, circle, radius):  
         km = radius / 1000
         kx = math.cos(math.pi * circle['lat'] / 180) * 111
         dx = abs(circle['lng'] - marker['lng']) * kx
@@ -76,7 +76,15 @@ def check(marker, circle, radius):
         return math.sqrt(dx * dx + dy * dy) <= km
 class EarthquakesWithinAnArea(APIView):
     def get(self, request):
-
+        shape = request.GET.get('shape')
+        if shape == 'circle':
+            return self.get_earthquakes_within_circle(request)
+        elif shape == 'rectangle':
+            return self.get_earthquakes_within_rectangle(request)
+        else:
+            return Response({'error': 'Invalid shape. Please provide a valid shape (e.g., circle)'}, status=status.HTTP_400_BAD_REQUEST)
+        
+    def get_earthquakes_within_circle(self, request):
         circle_center_lat_str = request.GET.get('circle_center_lat')
         circle_center_lng_str = request.GET.get('circle_center_lng')
         circle_radius_str = request.GET.get('circle_radius')
@@ -106,13 +114,43 @@ class EarthquakesWithinAnArea(APIView):
         earthquakes_within_area = []
         for earthquake in queryset:
             marker = {'lat': earthquake.latitude, 'lng': earthquake.longitude}
-            if check(marker, circle, circle_radius):
+            if check_inside_circle(marker, circle, circle_radius):
                 earthquakes_within_area.append(earthquake)
 
         earthquake_ids_within_area = [earthquake.id for earthquake in earthquakes_within_area]
         queryset = Earthquake.objects.filter(id__in=earthquake_ids_within_area)
         filter_set = EarthquakeFilter(filtered_query_params, queryset=queryset)
-        filtered_queryset = filter_set.qs[:200]
+        filtered_queryset = filter_set.qs[:500]
+        serializer = EarthquakesSerializer(filtered_queryset, many=True)
+        return Response(serializer.data)
+    
+    def get_earthquakes_within_rectangle(self, request):
+        bounds = {
+            'north': float(request.GET.get('north')),
+            'south': float(request.GET.get('south')),
+            'east': float(request.GET.get('east')),
+            'west': float(request.GET.get('west')),
+        }
+
+        if not all(bounds.values()):
+            return Response({'error': 'north, south, east, and west coordinates are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        queryset = Earthquake.objects.filter(
+            latitude__range=(bounds['south'], bounds['north']),
+            longitude__range=(bounds['west'], bounds['east'])
+        )
+
+        filtered_query_params = QueryDict(mutable=True)
+        for key, value in request.query_params.items():
+            if value:
+                filtered_query_params.appendlist(key, value)
+
+        if any(f'{field_name}__lt' in filtered_query_params or f'{field_name}__gt' in filtered_query_params for field_name in bounds.keys()):
+            return Response({"Error": "Cannot use 'lt' or 'gt' filters along with rectangle bounds."}, status=status.HTTP_400_BAD_REQUEST)
+
+        filter_set = EarthquakeFilter(filtered_query_params, queryset=queryset)
+        filtered_queryset = filter_set.qs[:500]
+
         serializer = EarthquakesSerializer(filtered_queryset, many=True)
         return Response(serializer.data)
     

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Plotly from "plotly.js-dist-min";
 import { Earthquake } from "../models/earthquake";
+import * as XLSX from "xlsx";
 
 const Boxplot: React.FC<{ earthquakes: Earthquake[] }> = ({ earthquakes }) => {
   const plotRef = useRef<HTMLDivElement>(null);
@@ -8,7 +9,6 @@ const Boxplot: React.FC<{ earthquakes: Earthquake[] }> = ({ earthquakes }) => {
   const [earthquakesParameters, setEarthquakesParameters] =
     useState("magnitude");
 
-  // Extract magnitudes or depths from the earthquakes data
   const getDataForParameter = (parameter: string): number[] => {
     switch (parameter) {
       case "magnitude":
@@ -25,15 +25,13 @@ const Boxplot: React.FC<{ earthquakes: Earthquake[] }> = ({ earthquakes }) => {
 
     let trace;
     if (type === "box") {
-      // Prepare box plot trace
       trace = {
         x: getDataForParameter(earthquakesParameters),
         type: "box",
         name: earthquakesParameters === "magnitude" ? "Magnitude" : "Depth",
-        orientation: "h", // Set orientation to horizontal
+        orientation: "h",
       };
     } else if (type === "histogram") {
-      // Prepare histogram trace
       trace = {
         x: getDataForParameter(earthquakesParameters),
         type: "histogram",
@@ -54,10 +52,10 @@ const Boxplot: React.FC<{ earthquakes: Earthquake[] }> = ({ earthquakes }) => {
             : earthquakesParameters === "magnitude"
             ? "Magnitude"
             : "Depth",
-      }, // Optional: Add y-axis title
+      },
       xaxis: {
         title: earthquakesParameters === "magnitude" ? "Magnitude" : "Depth",
-      }, // Optional: Add x-axis title
+      },
     };
 
     Plotly.newPlot(plotRef.current, data, layout);
@@ -77,6 +75,25 @@ const Boxplot: React.FC<{ earthquakes: Earthquake[] }> = ({ earthquakes }) => {
     setEarthquakesParameters(event.target.value);
   };
 
+  const handleDownload = () => {
+    const data = earthquakes.map(({ id, event_id, date, origin_time, latitude, longitude, magnitude, depth, location }) => ({
+      ID: id,
+      EventID: event_id,
+      Date: date,
+      OriginTime: origin_time,
+      Latitude: latitude,
+      Longitude: longitude,
+      Magnitude: magnitude,
+      Depth: depth,
+      Location: location,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Earthquakes");
+    XLSX.writeFile(wb, "earthquakes.xlsx");
+  };
+
   return (
     <div>
       <div className="d-flex justify-content-center mb-3 mt-3">
@@ -88,7 +105,6 @@ const Boxplot: React.FC<{ earthquakes: Earthquake[] }> = ({ earthquakes }) => {
           <option value="box">Boxplot</option>
           <option value="histogram">Histogram</option>
         </select>
-
         <select
           className="form-control w-auto me-2 ms-3"
           value={earthquakesParameters}
@@ -98,6 +114,7 @@ const Boxplot: React.FC<{ earthquakes: Earthquake[] }> = ({ earthquakes }) => {
           <option value="depth">Depth</option>
         </select>
       </div>
+      <button className="btn btn-success ms-3" onClick={handleDownload}>Download Data in CSV</button>
       <div ref={plotRef} />
     </div>
   );
